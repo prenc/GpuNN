@@ -2,6 +2,8 @@ module MiraculousNN
 
 export fit
 
+using ProgressMeter
+
 include("metrics.jl")
 include("forprop.jl")
 include("backprop.jl")
@@ -15,7 +17,7 @@ using .loss
 using .utils
 
 
-function fit(x, y, n_iters = 1000, batch_size = 16, learning_rate = 0.01)
+function fit(x, y; epochs = 5, batch_size = 16, learning_rate = 0.01)
     input_size = size(x, 1)
     output_size = size(y, 1)
 
@@ -25,13 +27,13 @@ function fit(x, y, n_iters = 1000, batch_size = 16, learning_rate = 0.01)
     nn_values = Dict()
     grads = Dict()
 
-    batch_num::Int64 = div(size(x, 2), batch_size) - 1
+    num_batches = div(size(x, 2), batch_size)
 
-    for i = 1:n_iters
-        for b_idx = 1:batch_num
+    for i = 1:epochs
+        for b_idx = 1:(num_batches - 1)
             b = b_idx * batch_size
-            x_batch = x[:, b:(b + batch_size)]
-            y_batch = y[:, b:(b + batch_size)]
+            x_batch = x[:, b:(b + batch_size - 1)]
+            y_batch = y[:, b:(b + batch_size - 1)]
 
             nn_values = _forward(x_batch, nn_params)
 
@@ -42,7 +44,7 @@ function fit(x, y, n_iters = 1000, batch_size = 16, learning_rate = 0.01)
         nn_values = _forward(x, nn_params)
         y_pred = nn_values["A$nlayers"]
         cost = loss.categorical_crossentropy(y, y_pred)
-        println("Iteration $i loss: $cost")
+        println("Epoch $i loss: $cost")
     end
 
     nn_values = _forward(x, nn_params)
