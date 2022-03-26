@@ -1,7 +1,9 @@
 module forprop
 
-relu(mat::Matrix) = max.(0, mat)
+relu(Z) = max.(0, Z)
 
-softmax(mat::Matrix) = exp.(mat) ./ sum(exp.(mat), dims = 1)
+softmax(Z) = exp.(Z) ./ sum(exp.(Z), dims = 1)
+
+sigmoid(Z) = 1 / (1 + exp.(-Z))
 
 end

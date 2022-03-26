@@ -1,4 +1,4 @@
-module metrics
+module metric
 
 function accuracy(y::Matrix, pred_proba::Matrix)
     y_pred = mapslices(argmax, pred_proba, dims = 1)

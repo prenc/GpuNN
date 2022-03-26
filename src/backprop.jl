@@ -1,11 +1,9 @@
 module backprop
 
-function softmax(dA::Matrix, A::Matrix)::Matrix
-    return dA - A
-end
+softmax(a, y) = sigmoid(a, y)
 
-function relu(dA::Matrix, A::Matrix)::Matrix
-    return dA .* (A .>= 0)
-end
+relu(a, y) = a * (y >= 0)
+
+sigmoid(a, y) = a - y
 
 end

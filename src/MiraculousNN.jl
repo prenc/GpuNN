@@ -4,20 +4,20 @@ export fit
 
 using ProgressMeter
 
-include("metrics.jl")
+include("metric.jl")
 include("forprop.jl")
 include("backprop.jl")
 include("loss.jl")
 include("utils.jl")
 
-using .metrics
+using .metric
 using .forprop
 using .backprop
 using .loss
 using .utils
 
 
-function fit(x, y; epochs = 10, batch_size = 16, learning_rate = 0.01, verbose = true)
+function fit(x, y; epochs = 10, batch_size = 32, learning_rate = 0.1, verbose = true)
     input_size = size(x, 1)
     output_size = size(y, 1)
 
@@ -49,8 +49,9 @@ function fit(x, y; epochs = 10, batch_size = 16, learning_rate = 0.01, verbose =
 
             nn_values = _forward(x, nn_params)
             pred_proba = nn_values["A$nlayers"]
-            cost = loss.categorical_crossentropy(y, pred_proba)
-            train_accuracy = metrics.accuracy(y, pred_proba)
+
+            cost = _compute_cost(y, pred_proba)
+            train_accuracy = metric.accuracy(y, pred_proba)
 
             ProgressMeter.next!(
                 p;
@@ -59,7 +60,6 @@ function fit(x, y; epochs = 10, batch_size = 16, learning_rate = 0.01, verbose =
         end
     end
 end
-
 
 
 function _init_layers(layer_sizes)::Dict{String,Matrix{Float64}}
@@ -98,22 +98,22 @@ function _backward(
     y::Matrix{Int64},
 )::Dict{String,T} where {T}
     nlayers = get_nlayers(params)
-    nsamples = size(y, 2)
+    num_samples = size(y, 2)
     grads = Dict()
 
     dA = nn_values["A$nlayers"]
-    dZ = backprop.softmax(dA, y)
+    dZ = backprop.softmax.(dA, y)
 
     for i = nlayers:-1:1
         if i != nlayers
             dA = transpose(params["W$(i + 1)"]) * dZ
-            dZ = backprop.relu(dA, nn_values["A$i"])
+            dZ = backprop.relu.(dA, nn_values["A$i"])
         end
 
-        last_output = i == 1 ? x : nn_values["A$(i - 1)"]
+        next_output = i == 1 ? x : nn_values["A$(i - 1)"]
 
-        grads["W$i"] = 1 / nsamples * dZ * transpose(last_output)
-        grads["B$i"] = 1 / nsamples * sum(dZ, dims = 2)
+        grads["W$i"] = dZ * transpose(next_output) / num_samples 
+        grads["B$i"] = sum(dZ, dims = 2) / num_samples 
     end
 
     return grads
@@ -133,5 +133,11 @@ function _update_weights!(
         params["B$i"] .-= learning_rate * grads["B$i"]
     end
 end
+
+function _compute_cost(y, pred_proba)
+    num_samples = size(y, 2)
+    return sum(loss.logistic.(y, pred_proba)) / num_samples
+end
+
 
 end
