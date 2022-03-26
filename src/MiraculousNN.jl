@@ -17,7 +17,7 @@ using .loss
 using .utils
 
 
-function fit(x, y; epochs = 5, batch_size = 16, learning_rate = 0.01)
+function fit(x, y; epochs = 10, batch_size = 16, learning_rate = 0.01, verbose = true)
     input_size = size(x, 1)
     output_size = size(y, 1)
 
@@ -27,10 +27,17 @@ function fit(x, y; epochs = 5, batch_size = 16, learning_rate = 0.01)
     nn_values = Dict()
     grads = Dict()
 
-    num_batches = div(size(x, 2), batch_size)
+    num_batches = div(size(x, 2), batch_size) - 1
 
     for i = 1:epochs
-        for b_idx = 1:(num_batches - 1)
+        p = Progress(
+            num_batches;
+            desc = "Epoch $i",
+            barglyphs = BarGlyphs("|-> |"),
+            enabled = verbose,
+        )
+
+        for b_idx = 1:num_batches
             b = b_idx * batch_size
             x_batch = x[:, b:(b + batch_size - 1)]
             y_batch = y[:, b:(b + batch_size - 1)]
@@ -39,18 +46,18 @@ function fit(x, y; epochs = 5, batch_size = 16, learning_rate = 0.01)
 
             grads = _backward(nn_params, nn_values, x_batch, y_batch)
             _update_weights!(nn_params, grads, learning_rate)
+
+            nn_values = _forward(x, nn_params)
+            pred_proba = nn_values["A$nlayers"]
+            cost = loss.categorical_crossentropy(y, pred_proba)
+            train_accuracy = metrics.accuracy(y, pred_proba)
+
+            ProgressMeter.next!(
+                p;
+                showvalues = [(:loss, cost), (:train_accuracy, train_accuracy)],
+            )
         end
-
-        nn_values = _forward(x, nn_params)
-        y_pred = nn_values["A$nlayers"]
-        cost = loss.categorical_crossentropy(y, y_pred)
-        println("Epoch $i loss: $cost")
     end
-
-    nn_values = _forward(x, nn_params)
-
-    train_accuracy = metrics.accuracy(y, nn_values["A$nlayers"])
-    println("Train accuracy: $(train_accuracy)")
 end
 
 
