@@ -2,6 +2,7 @@ module MiraculousNN
 
 export fit
 
+using CUDA
 using ProgressMeter
 
 include("metric.jl")
@@ -16,18 +17,37 @@ using .backprop
 using .loss
 using .utils
 
+CUDA.allowscalar(false)
 
-function fit(x, y; epochs = 10, batch_size = 32, learning_rate = 0.1, verbose = true)
+fit(x, y, epochs::Int; params...) = fit(x, y; epochs = epochs, params...)
+
+function fit(
+    x,
+    y;
+    epochs = 100,
+    batch_size = 16,
+    learning_rate = 0.1,
+    wd = 0.01,
+    verbose = true,
+    use_gpu = true,
+)
     input_size = size(x, 1)
     output_size = size(y, 1)
 
-    nn_params = _init_layers([input_size, 512, 512, output_size])
-    nlayers = get_nlayers(nn_params)
+    x, y = if use_gpu && CUDA.functional()
+        CuArray(x), CuArray(y)
+    else
+        Array(x), Array(y)
+    end
 
+    nn_params = _init_layers(typeof(x), [input_size, 200, 200, output_size])
+
+    nlayers = get_nlayers(nn_params)
+    num_batches = div(size(x, 2), batch_size) - 1
+
+    train_accuracy = 0
     nn_values = Dict()
     grads = Dict()
-
-    num_batches = div(size(x, 2), batch_size) - 1
 
     for i = 1:epochs
         p = Progress(
@@ -39,13 +59,13 @@ function fit(x, y; epochs = 10, batch_size = 32, learning_rate = 0.1, verbose = 
 
         for b_idx = 1:num_batches
             b = b_idx * batch_size
-            x_batch = x[:, b:(b + batch_size - 1)]
-            y_batch = y[:, b:(b + batch_size - 1)]
+            x_batch = view(x, :, b:(b + batch_size - 1))
+            y_batch = view(y, :, b:(b + batch_size - 1))
 
             nn_values = _forward(x_batch, nn_params)
 
             grads = _backward(nn_params, nn_values, x_batch, y_batch)
-            _update_weights!(nn_params, grads, learning_rate)
+            _update_weights!(nn_params, grads, learning_rate, wd)
 
             nn_values = _forward(x, nn_params)
             pred_proba = nn_values["A$nlayers"]
@@ -55,25 +75,27 @@ function fit(x, y; epochs = 10, batch_size = 32, learning_rate = 0.1, verbose = 
 
             ProgressMeter.next!(
                 p;
-                showvalues = [(:loss, cost), (:train_accuracy, train_accuracy)],
+                showvalues = [(:cost, cost), (:train_accuracy, train_accuracy)],
             )
         end
     end
 end
 
-
-function _init_layers(layer_sizes)::Dict{String,Matrix{Float64}}
+function _init_layers(T::Type, layer_sizes)::Dict{String,T}
     params = Dict()
 
     for i = 2:length(layer_sizes)
-        params["W$(i - 1)"] = rand(Float64, layer_sizes[i], layer_sizes[i - 1]) * 0.01
-        params["B$(i - 1)"] = zeros(Float64, layer_sizes[i], 1)
+        W = rand(Float64, layer_sizes[i], layer_sizes[i - 1]) * 0.01
+        B = zeros(Float64, layer_sizes[i], 1)
+        params["W$(i - 1)"] = T(W)
+        params["B$(i - 1)"] = T(B)
     end
     return params
 end
 
+_init_layers(layer_sizes) = _init_layers(Matrix{Float64}, layer_sizes)
 
-function _forward(x::T, params::Dict{String,T})::Dict where {T}
+function _forward(x, params::Dict{String,T})::Dict where {T}
     nlayers = get_nlayers(params)
     nn_values = Dict{String,T}()
 
@@ -82,8 +104,11 @@ function _forward(x::T, params::Dict{String,T})::Dict where {T}
     for i = 1:nlayers
         nn_values["Z$i"] = params["W$i"] * last_output .+ params["B$i"]
 
-        activation = i == nlayers ? forprop.softmax : forprop.relu
-        nn_values["A$i"] = activation(nn_values["Z$i"])
+        nn_values["A$i"] = if i == nlayers
+            forprop.softmax(nn_values["Z$i"])
+        else
+            forprop.relu.(nn_values["Z$i"])
+        end
 
         last_output = nn_values["A$i"]
     end
@@ -94,8 +119,8 @@ end
 function _backward(
     params::Dict{String,T},
     nn_values::Dict{String,T},
-    x::T,
-    y::Matrix{Int64},
+    x,
+    y,
 )::Dict{String,T} where {T}
     nlayers = get_nlayers(params)
     num_samples = size(y, 2)
@@ -112,8 +137,8 @@ function _backward(
 
         next_output = i == 1 ? x : nn_values["A$(i - 1)"]
 
-        grads["W$i"] = dZ * transpose(next_output) / num_samples 
-        grads["B$i"] = sum(dZ, dims = 2) / num_samples 
+        grads["W$i"] = dZ * transpose(next_output) / num_samples
+        grads["B$i"] = sum(dZ, dims = 2) / num_samples
     end
 
     return grads
@@ -125,11 +150,12 @@ function _update_weights!(
     params::Dict{String,T},
     grads::Dict{String,T},
     learning_rate,
+    wd,
 )::Nothing where {T}
     nlayers = get_nlayers(params)
 
     for i = 1:nlayers
-        params["W$i"] .-= learning_rate * grads["W$i"]
+        params["W$i"] .-= learning_rate * (grads["W$i"] + 2 * wd .* params["W$i"])
         params["B$i"] .-= learning_rate * grads["B$i"]
     end
 end
@@ -138,6 +164,5 @@ function _compute_cost(y, pred_proba)
     num_samples = size(y, 2)
     return sum(loss.logistic.(y, pred_proba)) / num_samples
 end
-
 
 end

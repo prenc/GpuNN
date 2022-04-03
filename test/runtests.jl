@@ -15,7 +15,7 @@ using MLDatasets
     input_size = size(x, 1)
     output_size = size(y, 1)
 
-    nn_params = MiraculousNN._init_layers([input_size, 20, 10, output_size])
+    nn_params = MiraculousNN._init_layers(typeof(x), [input_size, 20, 10, output_size])
 
     @testset "init_layers" begin
         @test keys(nn_params) |> length == 6
@@ -68,7 +68,7 @@ using MLDatasets
 
     MiraculousNN._update_weights!(nn_params, grads, 0.1)
 
-    @testset "update_weights_" begin
+    @testset "update_weights" begin
         @test keys(nn_params) |> length == 6
 
         @test size(nn_params["W1"]) == (20, 784)

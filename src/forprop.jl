@@ -1,9 +1,12 @@
 module forprop
 
-relu(Z) = max.(0, Z)
+relu(Z) = max(0, Z)
 
-softmax(Z) = exp.(Z) ./ sum(exp.(Z), dims = 1)
+function softmax(Z) 
+    exped = exp.(Z)
+    return exped ./ sum(exped, dims = 1)
+end
 
-sigmoid(Z) = 1 / (1 + exp.(-Z))
+sigmoid(Z) = 1 / (1 + exp(-Z))
 
 end
