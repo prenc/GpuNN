@@ -24,7 +24,7 @@ fit(x, y, epochs::Int; params...) = fit(x, y; epochs = epochs, params...)
 function fit(
     x,
     y;
-    epochs = 100,
+    epochs = 10,
     batch_size = 16,
     learning_rate = 0.1,
     wd = 0.01,
@@ -70,7 +70,7 @@ function fit(
             nn_values = _forward(x, nn_params)
             pred_proba = nn_values["A$nlayers"]
 
-            cost = _compute_cost(y, pred_proba)
+            cost = _compute_cost(y, pred_proba, wd, nn_params)
             train_accuracy = metric.accuracy(y, pred_proba)
 
             ProgressMeter.next!(
@@ -160,9 +160,11 @@ function _update_weights!(
     end
 end
 
-function _compute_cost(y, pred_proba)
+function _compute_cost(y, pred_proba, wd, params)
+    weight_penalty = sum(sum(params[k] .^ 2) for k in keys(params) if k[1] == 'W')
     num_samples = size(y, 2)
-    return sum(loss.logistic.(y, pred_proba)) / num_samples
+
+    return (sum(loss.logistic.(y, pred_proba)) + wd * weight_penalty) / num_samples
 end
 
 end
